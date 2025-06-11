@@ -1,77 +1,97 @@
-import warnings
+import argparse
+import collections
 
-import hydra
+import numpy as np
 import torch
-from hydra.utils import instantiate
-from omegaconf import OmegaConf
 
-from src.datasets.data_utils import get_dataloaders
-from src.trainer import Trainer
-from src.utils.init_utils import set_random_seed, setup_saving_and_logging
+import data_loader.data_loaders as module_data
+import model.loss as module_loss
+import model.metric as module_metric
+import model.model as module_arch
+from parse_config import ConfigParser
+from trainer import Trainer
+from utils import prepare_device
 
-warnings.filterwarnings("ignore", category=UserWarning)
+# fix random seeds for reproducibility
+SEED = 123
+torch.manual_seed(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+np.random.seed(SEED)
 
 
-@hydra.main(version_base=None, config_path="src/configs", config_name="baseline")
 def main(config):
-    """
-    Main script for training. Instantiates the model, optimizer, scheduler,
-    metrics, logger, writer, and dataloaders. Runs Trainer to train and
-    evaluate the model.
-
-    Args:
-        config (DictConfig): hydra experiment config.
-    """
-    set_random_seed(config.trainer.seed)
-
-    project_config = OmegaConf.to_container(config)
-    logger = setup_saving_and_logging(config)
-    writer = instantiate(config.writer, logger, project_config)
-
-    if config.trainer.device == "auto":
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-    else:
-        device = config.trainer.device
+    logger = config.get_logger("train")
 
     # setup data_loader instances
-    # batch_transforms should be put on device
-    dataloaders, batch_transforms = get_dataloaders(config, device)
+    data_loader = config.init_obj("data_loader", module_data)
+    valid_data_loader = data_loader.split_validation()
 
     # build model architecture, then print to console
-    model = instantiate(config.model).to(device)
+    model = config.init_obj("arch", module_arch)
     logger.info(model)
 
+    # prepare for (multi-device) GPU training
+    device, device_ids = prepare_device(config["n_gpu"])
+    model = model.to(device)
+    if len(device_ids) > 1:
+        model = torch.nn.DataParallel(model, device_ids=device_ids)
+
     # get function handles of loss and metrics
-    loss_function = instantiate(config.loss_function).to(device)
-    metrics = instantiate(config.metrics)
+    criterion = getattr(module_loss, config["loss"])
+    metrics = [getattr(module_metric, met) for met in config["metrics"]]
 
-    # build optimizer, learning rate scheduler
+    # build optimizer, learning rate scheduler. delete every lines containing lr_scheduler for disabling scheduler
     trainable_params = filter(lambda p: p.requires_grad, model.parameters())
-    optimizer = instantiate(config.optimizer, params=trainable_params)
-    lr_scheduler = instantiate(config.lr_scheduler, optimizer=optimizer)
-
-    # epoch_len = number of iterations for iteration-based training
-    # epoch_len = None or len(dataloader) for epoch-based training
-    epoch_len = config.trainer.get("epoch_len")
+    optimizer = config.init_obj("optimizer", torch.optim, trainable_params)
+    lr_scheduler = config.init_obj("lr_scheduler", torch.optim.lr_scheduler, optimizer)
 
     trainer = Trainer(
-        model=model,
-        criterion=loss_function,
-        metrics=metrics,
-        optimizer=optimizer,
-        lr_scheduler=lr_scheduler,
+        model,
+        criterion,
+        metrics,
+        optimizer,
         config=config,
         device=device,
-        dataloaders=dataloaders,
-        epoch_len=epoch_len,
-        logger=logger,
-        writer=writer,
-        batch_transforms=batch_transforms,
-        skip_oom=config.trainer.get("skip_oom", True),
+        data_loader=data_loader,
+        valid_data_loader=valid_data_loader,
+        lr_scheduler=lr_scheduler,
     )
 
     trainer.train()
 
 
 if __name__ == "__main__":
-    main()
+    args = argparse.ArgumentParser(description="PyTorch Template")
+    args.add_argument(
+        "-c",
+        "--config",
+        default=None,
+        type=str,
+        help="config file path (default: None)",
+    )
+    args.add_argument(
+        "-r",
+        "--resume",
+        default=None,
+        type=str,
+        help="path to latest checkpoint (default: None)",
+    )
+    args.add_argument(
+        "-d",
+        "--device",
+        default=None,
+        type=str,
+        help="indices of GPUs to enable (default: all)",
+    )
+
+    # custom cli options to modify configuration from default values given in json file.
+    CustomArgs = collections.namedtuple("CustomArgs", "flags type target")
+    options = [
+        CustomArgs(["--lr", "--learning_rate"], type=float, target="optimizer;args;lr"),
+        CustomArgs(
+            ["--bs", "--batch_size"], type=int, target="data_loader;args;batch_size"
+        ),
+    ]
+    config = ConfigParser.from_args(args, options)
+    main(config)
