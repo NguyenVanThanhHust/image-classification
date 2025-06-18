@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/pytorch:23.08-py3
+FROM mosaicml/pytorch:2.6.0_cu124-python3.12-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 

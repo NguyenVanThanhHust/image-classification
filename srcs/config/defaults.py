@@ -25,6 +25,10 @@ _C.MODEL.NUM_CLASSES = 10
 # INPUT
 # -----------------------------------------------------------------------------
 _C.INPUT = CN()
+# Name of dataset
+_C.INPUT.NAME = "mnist"
+# Data folder
+_C.INPUT.DATA_DIR = "../Datasets/split_mini_imagenet"
 # Size of the image during training
 _C.INPUT.SIZE_TRAIN = 32
 # Size of the image during test

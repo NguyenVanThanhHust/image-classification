@@ -4,9 +4,8 @@
 @contact: sherlockliao01@gmail.com
 """
 
-from .model import ResNet18
-
+from .resnet34 import resnet34
 
 def build_model(cfg):
-    model = ResNet18(cfg.MODEL.NUM_CLASSES)
+    model = resnet34(cfg.MODEL.NUM_CLASSES)
     return model

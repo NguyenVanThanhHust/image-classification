@@ -105,7 +105,6 @@ ENV/
 .mypy_cache/
 
 # input data, saved log, checkpoints, hydra outputs
-data/
 input/
 saved/
 wandb/

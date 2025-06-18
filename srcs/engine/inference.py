@@ -28,6 +28,5 @@ def inference(
             val_total_samples += labels.size(0)
             val_correct_predictions += (predicted == labels).sum().item()
 
-            val_epoch_loss = val_loss / len(val_loader.dataset)
-            val_epoch_accuracy = val_correct_predictions / val_total_samples
-            print(f"Val Accuracy: {val_epoch_accuracy:.4f}")
+        val_epoch_accuracy = val_correct_predictions / val_total_samples
+        print(f"Val Accuracy: {val_epoch_accuracy:.4f}")

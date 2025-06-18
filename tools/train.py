@@ -11,6 +11,7 @@ import os
 import sys
 from os import mkdir
 
+import torch.nn as nn
 import torch.nn.functional as F
 
 sys.path.append('.')
@@ -34,6 +35,7 @@ def train(cfg):
 
     train_loader = make_data_loader(cfg, is_train=True)
     val_loader = make_data_loader(cfg, is_train=False)
+    criterion = nn.CrossEntropyLoss()
 
     do_train(
         cfg,
@@ -42,7 +44,7 @@ def train(cfg):
         val_loader,
         optimizer,
         scheduler,
-        F.cross_entropy,
+        criterion,
     )
 
 
