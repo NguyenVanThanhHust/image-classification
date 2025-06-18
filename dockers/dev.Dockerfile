@@ -39,4 +39,4 @@ RUN echo "alias ..='cd ..'" >> ~/.bashrc
 RUN echo "alias ...='cd .. && cd ..'" >> ~/.bashrc
 RUN echo "alias py=/usr/bin/python3" >> ~/.bashrc
 
-RUN pip3 install pandas tensorboardx
+RUN pip3 install pandas tensorboardx yacs

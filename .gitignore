@@ -1,5 +1,7 @@
 *.tar
-
+*.tar.gz
+*-idx1-ubyte
+MNIST/*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

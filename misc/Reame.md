@@ -1,0 +1,1 @@
+python sample_dali_pipeline.py ../../Datasets/split_mini_imagenet/train ../../Datasets/split_mini_imagenet/val
