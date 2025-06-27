@@ -1,5 +1,8 @@
 # encoding: utf-8
-
+"""
+@modified: thanh
+@contact: nguyenvanthanhhust@gmail.com
+"""
 import argparse
 import os
 import sys
@@ -50,7 +53,7 @@ def export_pytorch_to_onnx(model, dummy_input, onnx_path, input_names=None, outp
         print(f"Error exporting model to ONNX: {e}")
 
 def main():
-    parser = argparse.ArgumentParser(description="PyTorch Template MNIST Inference")
+    parser = argparse.ArgumentParser(description="PyTorch Template Mini Imagenet Inference")
     parser.add_argument(
         "--config_file", default="", help="path to config file", type=str
     )
@@ -70,7 +73,7 @@ def main():
     if output_dir and not os.path.exists(output_dir):
         mkdir(output_dir)
 
-    logger = setup_logger("template_model", output_dir, 0)
+    logger = setup_logger("convert_onnx", output_dir, 0)
     logger.info("Using {} GPUS".format(num_gpus))
     logger.info(args)
 
@@ -86,25 +89,29 @@ def main():
 
     # Create a dummy input tensor
     # The shape of the dummy_input should match the expected input shape of your model
-    dummy_input = torch.randn(16, 3, 224, 224)
+    dummy_input = torch.randn(1, 3, 224, 224, dtype=torch.float32)
 
-    # Define the output path for the ONNX model
-
+    example_inputs = (torch.randn(1, 3, 224, 224),)
+    onnx_program = torch.onnx.export(model, example_inputs, dynamo=True)
     onnx_filename = str(cfg.TEST.WEIGHT).replace(".pth", ".onnx")
+    onnx_program.save(onnx_filename)
     onnx_path = onnx_filename # Save in current directory for simplicity
-
-    # Define input and output names (optional but recommended for clarity)
-    input_names = ["input"]
-    output_names = ["output"]
-
-    # Define dynamic axes (optional, useful if your model handles variable batch sizes or other dimensions)
-    # Here, we make the batch size dynamic for both input and output
-    dynamic_axes = {'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}
+    # # Define the output path for the ONNX model
 
 
-    # Export the model
-    print("--- Exporting SimpleModel to ONNX ---")
-    export_pytorch_to_onnx(model, dummy_input, onnx_path, input_names, output_names, dynamic_axes)
+    # # Define input and output names (optional but recommended for clarity)
+    # input_names = ["input"]
+    # # output_names = ["output"]
+
+    # # Define dynamic axes (optional, useful if your model handles variable batch sizes or other dimensions)
+    # # Here, we make the batch size dynamic for both input and output
+    # # dynamic_axes = {'input': {0: 'batch'}, 'output': {0: 'batch'}}
+
+
+    # # Export the model
+    # print("--- Exporting SimpleModel to ONNX ---")
+    # # export_pytorch_to_onnx(model, dummy_input, onnx_path, input_names, output_names, dynamic_axes)
+    # export_pytorch_to_onnx(model, dummy_input, onnx_path, input_names, output_names)
 
     # Load the ONNX model
     ort_session = ort.InferenceSession(onnx_path)

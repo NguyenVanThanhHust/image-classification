@@ -6,7 +6,7 @@
 from os.path import join
 from torch.utils import data
 
-from .datasets.mini_imagenet import ImageFolder
+from .datasets.mini_imagenet import CustomImageFolder
 from .transforms import build_transforms
 
 
@@ -16,7 +16,7 @@ def build_dataset(cfg, transforms, is_train=True):
             data_dir = join(cfg.INPUT.DATA_DIR, "train")
         else:
             data_dir = join(cfg.INPUT.DATA_DIR, "val")
-        datasets = ImageFolder(root=data_dir, transform=transforms)
+        datasets = CustomImageFolder(root=data_dir, transform=transforms)
     else:
         print(f"Unrecognize dataset name, get {cfg.INPUT.NAME}")
         raise NotImplementedError

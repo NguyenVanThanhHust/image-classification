@@ -1,281 +1,103 @@
-# encoding: utf-8
-
-import argparse
+import numpy as np
 import os
-import sys
-from os import mkdir
-
-import torch
-
-sys.path.append('.')
-from srcs.config import cfg
-from srcs.modeling import build_model
-from srcs.utils.logger import setup_logger
-
-import onnxruntime as ort
-import numpy as np
-
-import torch
-import torch.nn as nn
-import numpy as np
-import tensorrt as trt
 import pycuda.driver as cuda
-import pycuda.autoinit  # Required for CUDA context management
-import os
+import pycuda.autoinit
+import tensorrt as trt
 
+import matplotlib.pyplot as plt
+from PIL import Image
+import argparse
 
-def export_pytorch_to_onnx(model, dummy_input, onnx_path, input_names=None, output_names=None, dynamic_axes=None):
-    """
-    Exports a PyTorch model to ONNX format.
+TRT_LOGGER = trt.Logger()
 
-    Args:
-        model (torch.nn.Module): The PyTorch model to export.
-        dummy_input (torch.Tensor or tuple of torch.Tensor): An example input to the model.
-                                                              This is used to trace the model's computation graph.
-        onnx_path (str): The path where the ONNX model will be saved.
-        input_names (list of str, optional): Names for the input tensor(s).
-        output_names (list of str, optional): Names for the output tensor(s).
-        dynamic_axes (dict, optional): Specifies dynamic axes for inputs and outputs.
-                                      Example: {'input1': {0: 'batch_size', 2: 'width'}, 'output1': {0: 'batch_size'}}
-    """
-    try:
-        # Set the model to evaluation mode
-        model.eval()
+BATCH_SIZE = 1
+INPUT_H = 224
+INPUT_W = 224
+INPUT_BLOB_NAME = "input"
+OUTPUT_BLOB_NAME = "output"
 
-        # Export the model
-        torch.onnx.export(model,
-                          dummy_input,
-                          onnx_path,
-                          export_params=True,  # Store the trained parameter weights inside the model file
-                          opset_version=13,    # The ONNX opset version to use
-                          do_constant_folding=True, # Whether to execute constant folding for optimization
-                          input_names=input_names,
-                          output_names=output_names,
-                          dynamic_axes=dynamic_axes)
+ENGINE_PATH = "outputs/mini_imagenet/resnet_best.engine"
 
-        print(f"Model successfully exported to ONNX at: {onnx_path}")
+TRT_LOGGER = trt.Logger(trt.Logger.INFO)
 
-    except Exception as e:
-        print(f"Error exporting model to ONNX: {e}")
+# For torchvision models, input images are loaded in to a range of [0, 1] and
+# normalized using mean = [0.485, 0.456, 0.406] and stddev = [0.229, 0.224, 0.225].
+def preprocess(image):
+    # Mean normalization
+    mean = np.array([0.5, 0.5, 0.5]).astype('float32')
+    stddev = np.array([0.5, 0.5, 0.5]).astype('float32')
+    data = (np.asarray(image).astype('float32') / float(255.0) - mean) / stddev
+    # Switch from HWC to to CHW order
+    return np.moveaxis(data, 2, 0)
 
-
-# --- 3. Build a TensorRT engine from the ONNX model ---
-TRT_LOGGER = trt.Logger(trt.Logger.WARNING) # Set logger level to WARNING for less verbose output
-
-def build_engine(onnx_file_path):
-    # For more advanced usage, you might use an explicit batch size here
-    # rather than relying on dynamic batch size from ONNX.
-    explicit_batch = 1 << (int)(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
-    with trt.Builder(TRT_LOGGER) as builder, \
-         builder.create_network(explicit_batch) as network, \
-         trt.OnnxParser(network, TRT_LOGGER) as parser:
-
-        builder.max_batch_size = 1 # Set a max batch size for implicit batch networks (even if using explicit)
-        builder.max_workspace_size = 1 << 20  # 1MB, adjust as needed for larger models
-
-        print(f"Parsing ONNX file {onnx_file_path}...")
-        with open(onnx_file_path, 'rb') as model:
-            if not parser.parse(model.read()):
-                print("ERROR: Failed to parse the ONNX file.")
-                for error in range(parser.num_errors):
-                    print(parser.get_error(error))
-                return None
-        print("ONNX file parsed successfully.")
-
-        # Optional: Set precision for optimization (FP16 is common)
-        # builder.fp16_mode = True
-
-        print("Building TensorRT engine...")
-        engine = builder.build_cuda_engine(network)
-        print("TensorRT engine built successfully.")
-        return engine
+def load_engine(engine_file_path):
+    assert os.path.exists(engine_file_path)
+    print("Reading engine from file {}".format(engine_file_path))
+    with open(engine_file_path, "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
+        return runtime.deserialize_cuda_engine(f.read())
     
-def main():
-    parser = argparse.ArgumentParser(description="PyTorch Template MNIST Inference")
-    parser.add_argument(
-        "--config_file", default="", help="path to config file", type=str
-    )
-    parser.add_argument("opts", help="Modify config options using the command-line", default=None,
-                        nargs=argparse.REMAINDER)
 
+def infer(engine, input_file):
+    print("Reading input image from file {}".format(input_file))
+    with Image.open(input_file) as img:
+        input_image = preprocess(img)
+        image_width = img.width
+        image_height = img.height
+
+    with engine.create_execution_context() as context:
+        # Allocate host and device buffers
+        tensor_names = [engine.get_tensor_name(i) for i in range(engine.num_io_tensors)]
+        print(tensor_names)
+        for tensor in tensor_names:
+            size = trt.volume(context.get_tensor_shape(tensor))
+            dtype = trt.nptype(engine.get_tensor_dtype(tensor))
+            print(size)
+            print(context.get_tensor_shape(tensor))
+            print(engine.get_tensor_mode(tensor))
+            if engine.get_tensor_mode(tensor) == trt.TensorIOMode.INPUT:
+                context.set_input_shape(tensor, (1, 3, image_height, image_width))
+                input_buffer = np.ascontiguousarray(input_image)
+                input_memory = cuda.mem_alloc(input_image.nbytes)
+                context.set_tensor_address(tensor, int(input_memory))
+            else:
+                output_buffer = cuda.pagelocked_empty(size, dtype)
+                output_memory = cuda.mem_alloc(output_buffer.nbytes)
+                context.set_tensor_address(tensor, int(output_memory))
+
+        stream = cuda.Stream()
+        
+        # Transfer input data to the GPU.
+        cuda.memcpy_htod_async(input_memory, input_buffer, stream)
+        
+        # Run inference
+        context.execute_async_v3(stream_handle=stream.handle)
+        
+        # Transfer prediction output from the GPU.
+        cuda.memcpy_dtoh_async(output_buffer, output_memory, stream)
+        
+        # Synchronize the stream
+        stream.synchronize()
+        output_d64 = np.array(output_buffer, dtype=np.int64)
+        print(type(output_d64))
+        # np.savetxt('test.out', output_d64.astype(int), fmt='%i', delimiter=' ', newline=' ')
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-s", action='store_true')
+    parser.add_argument("-d", action='store_true')
     args = parser.parse_args()
 
-    num_gpus = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
+    # if not (args.s ^ args.d):
+    #     print(
+    #         "arguments not right!\n"
+    #         "python alexnet.py -d   # deserialize plan file and run inference"
+    #     )
+    #     sys.exit()
 
-    if args.config_file != "":
-        cfg.merge_from_file(args.config_file)
-    cfg.merge_from_list(args.opts)
-    cfg.freeze()
+    runtime = trt.Runtime(TRT_LOGGER)
+    assert runtime
+    input_file = "tools/n01532829_110.JPEG"
 
-    output_dir = cfg.OUTPUT_DIR
-    if output_dir and not os.path.exists(output_dir):
-        mkdir(output_dir)
-
-    logger = setup_logger("template_model", output_dir, 0)
-    logger.info("Using {} GPUS".format(num_gpus))
-    logger.info(args)
-
-    if args.config_file != "":
-        logger.info("Loaded configuration file {}".format(args.config_file))
-        with open(args.config_file, 'r') as cf:
-            config_str = "\n" + cf.read()
-            logger.info(config_str)
-    logger.info("Running with config:\n{}".format(cfg))
-
-    model = build_model(cfg)
-    model.load_state_dict(torch.load(cfg.TEST.WEIGHT))
-
-    # Create a dummy input tensor
-    # The shape of the dummy_input should match the expected input shape of your model
-    dummy_input = torch.randn(16, 3, 224, 224)
-
-    # Define the output path for the ONNX model
-
-    onnx_filename = str(cfg.TEST.WEIGHT).replace(".pth", ".onnx")
-    onnx_path = onnx_filename # Save in current directory for simplicity
-
-    # Define input and output names (optional but recommended for clarity)
-    input_names = ["input"]
-    output_names = ["output"]
-
-    # Define dynamic axes (optional, useful if your model handles variable batch sizes or other dimensions)
-    # Here, we make the batch size dynamic for both input and output
-    dynamic_axes = {'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}}
-
-
-    # Export the model
-    print("--- Exporting SimpleModel to ONNX ---")
-    export_pytorch_to_onnx(model, dummy_input, onnx_path, input_names, output_names, dynamic_axes)
-
-    # Load the ONNX model
-    ort_session = ort.InferenceSession(onnx_path)
-
-    # Get input and output names from the ONNX model
-    # This is crucial as ONNX Runtime requires these names
-    input_name = ort_session.get_inputs()[0].name
-    output_name = ort_session.get_outputs()[0].name
-
-    # Convert the dummy input tensor to NumPy
-    # ONNX Runtime typically expects NumPy arrays
-    onnx_input_np = dummy_input.cpu().numpy()
-
-    # Run inference with ONNX Runtime
-    # The run method returns a list of outputs
-    ort_outputs = ort_session.run([output_name], {input_name: onnx_input_np})
-
-    # Extract the output(s) from the list
-    onnx_output_np = ort_outputs[0]
-    print("ONNX Runtime Output Shape:", onnx_output_np.shape)
-    print("ONNX Runtime Output (first 5 values):", onnx_output_np.flatten()[:5])
-
-    with torch.no_grad(): # No need to calculate gradients for inference
-        pytorch_output = model(dummy_input)
-    # Convert PyTorch output to a NumPy array for comparison
-    pytorch_output_np = pytorch_output.cpu().numpy()
-
-    tolerance_rtol = 1e-05
-    tolerance_atol = 1e-08
-
-    are_outputs_close = np.allclose(pytorch_output_np, onnx_output_np, rtol=tolerance_rtol, atol=tolerance_atol)
-
-    print(f"\nAre outputs numerically close? {are_outputs_close}")
-
-    if not are_outputs_close:
-        print("\nOutputs are NOT numerically close. Investigating differences:")
-        diff = np.abs(pytorch_output_np - onnx_output_np)
-        max_diff = np.max(diff)
-        print(f"Maximum absolute difference: {max_diff}")
-
-        # Optionally, print where the largest differences occur
-        # Example for a single output tensor
-        if diff.size > 0:
-            max_diff_idx = np.unravel_index(np.argmax(diff), diff.shape)
-            print(f"Index of max difference: {max_diff_idx}")
-            print(f"PyTorch value at max diff: {pytorch_output_np[max_diff_idx]}")
-            print(f"ONNX value at max diff: {onnx_output_np[max_diff_idx]}")
-
-        # If differences are small but `allclose` fails, you might need to relax tolerances
-        print(f"Consider adjusting rtol ({tolerance_rtol}) and atol ({tolerance_atol}) if differences are negligible.")
-
-    tensorrt_engine = build_engine(onnx_path)
-
-    if tensorrt_engine is None:
-        print("Failed to build TensorRT engine. Exiting.")
-        exit()
-
-    # --- 4. Perform inference using the TensorRT engine ---
-    # Set up CUDA context for TensorRT
-    context = tensorrt_engine.create_execution_context()
-
-    # Prepare input and output buffers for TensorRT
-    inputs = []
-    outputs = []
-    bindings = []
-    stream = cuda.Stream()
-
-    # Determine input and output tensor shapes and data types
-    # For our simple model, there's one input and one output
-    input_shape = tensorrt_engine.get_binding_shape(0) # Assuming input is at index 0
-    output_shape = tensorrt_engine.get_binding_shape(1) # Assuming output is at index 1
-
-    # If using dynamic batch size, ensure input_shape[0] is set correctly for current inference
-    # In our case, we're using batch size 1, so the first dimension of input_shape will be 1
-    # However, if it's -1 (dynamic), you need to set the actual batch size for the execution context
-    context.set_binding_shape(0, (16, 3, 224, 224)) # Set input shape for this inference (batch size 1)
-
-    # Allocate host and device buffers for input
-    host_input = cuda.pagelocked_empty(trt.volume(input_shape), dtype=np.float32)
-    device_input = cuda.mem_alloc(host_input.nbytes)
-
-    # Allocate host and device buffers for output
-    host_output = cuda.pagelocked_empty(trt.volume(output_shape), dtype=np.float32)
-    device_output = cuda.mem_alloc(host_output.nbytes)
-
-    # Copy the PyTorch dummy input (converted to numpy) to the host input buffer
-    np.copyto(host_input, dummy_input.cpu().numpy().flatten())
-
-    # Copy input from host to device
-    cuda.memcpy_htod_async(device_input, host_input, stream)
-
-    # Append device pointers to bindings
-    bindings.append(int(device_input))
-    bindings.append(int(device_output))
-
-    # Execute inference
-    context.execute_async_v2(bindings=bindings, stream_handle=stream.handle)
-
-    # Copy output from device to host
-    cuda.memcpy_dtoh_async(host_output, device_output, stream)
-
-    # Synchronize the stream
-    stream.synchronize()
-
-    tensorrt_output = host_output.reshape(output_shape)
-    print(f"\nTensorRT Model Output (first 5 values):\n{tensorrt_output.flatten()[:5]}")
-
-    # --- 5. Compare the outputs ---
-    tolerance = 1e-4  # Adjust tolerance as needed for FP32/FP16 models
-    are_close = np.allclose(pytorch_output.cpu().numpy(), tensorrt_output, atol=tolerance)
-
-    print(f"\nAre PyTorch and TensorRT outputs close within tolerance {tolerance}? {are_close}")
-
-    if are_close:
-        print("Success! The TensorRT engine produces results consistent with the PyTorch model.")
-    else:
-        print("Warning! Discrepancies found between PyTorch and TensorRT outputs.")
-        print(f"Max absolute difference: {np.max(np.abs(pytorch_output.cpu().numpy() - tensorrt_output))}")
-
-    # --- Clean up ---
-    # Release TensorRT resources
-    del context
-    del tensorrt_engine
-
-    # Release CUDA memory (though pycuda.autoinit handles some of this)
-    del device_input
-    del device_output
-    del host_input
-    del host_output
-    del stream
-
-if __name__ == '__main__':
-    main()
+    print("Running TensorRT inference for FCN-ResNet101")
+    with load_engine(ENGINE_PATH) as engine:
+        infer(engine, input_file)

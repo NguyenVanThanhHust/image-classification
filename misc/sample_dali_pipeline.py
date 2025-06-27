@@ -718,7 +718,8 @@ def train(train_loader, model, criterion, scaler, optimizer, epoch):
             if i > 10:
                 break
 
-        with torch.cuda.amp("cuda", enabled=args.fp16_mode):
+        # with torch.cuda.amp("cuda", enabled=args.fp16_mode):
+        with torch.amp.autocast("cuda", enabled=args.fp16_mode):
             output = model(input)
             loss = criterion(output, target)
 

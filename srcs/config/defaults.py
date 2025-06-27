@@ -20,6 +20,8 @@ _C.MODEL = CN()
 _C.MODEL.MODEL_NAME = "Resnet"
 _C.MODEL.DEVICE = "cuda"
 _C.MODEL.NUM_CLASSES = 10
+_C.MODEL.PRETRAINED_MODEL_PATH = ""
+
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -30,9 +32,9 @@ _C.INPUT.NAME = "mnist"
 # Data folder
 _C.INPUT.DATA_DIR = "../Datasets/split_mini_imagenet"
 # Size of the image during training
-_C.INPUT.SIZE_TRAIN = 32
+_C.INPUT.SIZE_TRAIN = [224, 224]
 # Size of the image during test
-_C.INPUT.SIZE_TEST = 32
+_C.INPUT.SIZE_TEST = [224, 224]
 # Minimum scale for the image during training
 _C.INPUT.MIN_SCALE_TRAIN = 0.5
 # Maximum scale for the image during test

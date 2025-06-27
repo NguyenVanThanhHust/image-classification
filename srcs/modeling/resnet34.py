@@ -110,11 +110,14 @@ class ResNet(nn.Module):
 
         return x
     
-def resnet34(num_classes=1000):
+def resnet34(num_classes=1000, pretrained=None):
     """
     ResNet-34 model implementation.
     """
-    return ResNet(BasicBlock, [3, 4, 6, 3], num_classes)
+    model = ResNet(BasicBlock, [3, 4, 6, 3], num_classes)
+    if pretrained is not None:
+        model.load_state_dict(torch.load(pretrained))
+    return model
 
 if __name__ == '__main__':
     # Create an instance of ResNet-34

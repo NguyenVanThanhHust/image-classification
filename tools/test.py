@@ -20,7 +20,7 @@ from srcs.utils.logger import setup_logger
 
 
 def main():
-    parser = argparse.ArgumentParser(description="PyTorch Template MNIST Inference")
+    parser = argparse.ArgumentParser(description="PyTorch Template Mini Imagenet Inference")
     parser.add_argument(
         "--config_file", default="", help="path to config file", type=str
     )
@@ -35,12 +35,12 @@ def main():
         cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()
-
+    os.makedirs("outputs", exist_ok=True)
     output_dir = cfg.OUTPUT_DIR
     if output_dir and not os.path.exists(output_dir):
         mkdir(output_dir)
 
-    logger = setup_logger("template_model", output_dir, 0)
+    logger = setup_logger("main_process", output_dir, 0)
     logger.info("Using {} GPUS".format(num_gpus))
     logger.info(args)
 

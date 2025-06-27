@@ -13,6 +13,7 @@ from os import mkdir
 
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
 
 sys.path.append('.')
 from srcs.config import cfg
@@ -36,6 +37,8 @@ def train(cfg):
     train_loader = make_data_loader(cfg, is_train=True)
     val_loader = make_data_loader(cfg, is_train=False)
     criterion = nn.CrossEntropyLoss()
+    
+    writer = SummaryWriter()
 
     do_train(
         cfg,
@@ -45,11 +48,13 @@ def train(cfg):
         optimizer,
         scheduler,
         criterion,
+        writer
     )
+    writer.close()
 
 
 def main():
-    parser = argparse.ArgumentParser(description="PyTorch Template MNIST Training")
+    parser = argparse.ArgumentParser(description="PyTorch Template Mini Imagenet Training")
     parser.add_argument(
         "--config_file", default="", help="path to config file", type=str
     )
@@ -65,11 +70,12 @@ def main():
     cfg.merge_from_list(args.opts)
     cfg.freeze()
 
+    os.makedirs("outputs", exist_ok=True)
     output_dir = cfg.OUTPUT_DIR
     if output_dir and not os.path.exists(output_dir):
         mkdir(output_dir)
 
-    logger = setup_logger("template_model", output_dir, 0)
+    logger = setup_logger("main_process", output_dir, 0)
     logger.info("Using {} GPUS".format(num_gpus))
     logger.info(args)
 

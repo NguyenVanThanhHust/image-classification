@@ -15,6 +15,10 @@ Train model
 ```
 python tools/train.py --config_file configs/train_mini_imnet.yml
 ```
+To finetune from pretrained model
+```
+python tools/train.py --config_file configs/train_mini_imnet.yml MODEL.PRETRAINED_MODEL_PATH outputs/mini_imagenet/resnet_48_0.1568.pth
+```
 
 Test model
 ```
@@ -33,8 +37,12 @@ Export to tensorrt format
             --onnx=outputs/mini_imagenet/resnet_best.onnx \
             --saveEngine=outputs/mini_imagenet/resnet_best.engine \
             --minShapes=input:1x3x224x224 \
-            --optShapes=input:16x3x224x224 \
-            --maxShapes=input:100x3x224x224
+            --maxShapes=input:16x3x224x224
+```
+
+Test the inference with tensorrt
+```
+python tools/test_tensorrt.py
 ```
 ## Result
 

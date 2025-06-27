@@ -3,6 +3,11 @@
 @author:  sherlock
 @contact: sherlockliao01@gmail.com
 """
+"""
+@modified: thanh
+@contact: nguyenvanthanhhust@gmail.com
+"""
+
 import torch
 import logging
 
@@ -19,7 +24,7 @@ def inference(
     val_correct_predictions = 0
     val_total_samples = 0
     with torch.no_grad(): # Disable gradient calculation for validation
-        for inputs, labels in val_loader:
+        for idx, (inputs, labels) in enumerate(val_loader):
             inputs, labels = inputs.to(device), labels.to(device)
 
             outputs = model(inputs)

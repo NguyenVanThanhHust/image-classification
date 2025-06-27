@@ -37,6 +37,10 @@ RUN apt-get update --fix-missing && apt-get install -y \
 
 RUN echo "alias ..='cd ..'" >> ~/.bashrc
 RUN echo "alias ...='cd .. && cd ..'" >> ~/.bashrc
-RUN echo "alias py=/usr/bin/python3" >> ~/.bashrc
+RUN echo "alias python=/usr/bin/python3" >> ~/.bashrc
+RUN echo "alias p=/usr/bin/python3" >> ~/.bashrc
 
-RUN pip3 install pandas tensorboardx yacs onnx onnxruntime
+RUN pip3 install pandas tensorboard tensorboardx yacs onnx onnxruntime onnxruntime-gpu
+RUN pip install --extra-index-url https://pypi.nvidia.com  --upgrade nvidia-dali-cuda120
+RUN pip install pycuda
+RUN ldconfig
