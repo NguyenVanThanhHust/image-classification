@@ -45,9 +45,9 @@ Test the inference with tensorrt
 python tools/test_tensorrt.py
 ```
 ## Result
-| Config    | Start | End | Total time | Val acc |
-|:--------|:-----:|---------:|---------:|---------:|
-| Basic   | 2025-07-29 07:48:52,358 | 2025-07-30 06:25:47,310        |22h 26p 54s       |  6210      |
+| Config    | Total time | Val acc | Val acc |
+|:--------|---------:|---------:|
+| Basic   | 22.57h       |  6210   |
 # Acknowledgments
 This is copied and modified from [Deep-Learning-Project-Template](https://github.com/L1aoXingyu/Deep-Learning-Project-Template)
 

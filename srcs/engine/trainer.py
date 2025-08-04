@@ -65,7 +65,7 @@ def do_train(
             total_samples += labels.size(0)
             correct_predictions += (predicted == labels).sum().item()
             writer.add_scalar('Loss/train_iteration', loss.item(), train_global_step)
-            writer.add_scalar('Accuracy/train_iteration', correct_predictions, train_global_step)
+            writer.add_scalar('Accuracy/train_iteration', correct_predictions/total_samples, train_global_step)
             train_global_step += 1
             if i % log_period == 0:
                 epoch_loss = running_loss / len(train_loader.dataset)
@@ -92,7 +92,7 @@ def do_train(
                     val_total_samples += labels.size(0)
                     val_correct_predictions += (predicted == labels).sum().item()
                     writer.add_scalar('Loss/val_iteration', val_loss, val_global_step)
-                    writer.add_scalar('Accuracy/val_iteration', correct_predictions, val_global_step)
+                    writer.add_scalar('Accuracy/val_iteration', correct_predictions/val_total_samples, val_global_step)
                     val_global_step += 1
 
             val_epoch_loss = val_loss / len(val_loader.dataset)
