@@ -1,6 +1,7 @@
 *.tar
 *.tar.gz
 *-idx1-ubyte
+runs/*
 MNIST/*
 # Byte-compiled / optimized / DLL files
 __pycache__/

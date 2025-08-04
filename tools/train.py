@@ -87,7 +87,7 @@ def main():
     logger.info("Running with config:\n{}".format(cfg))
 
     train(cfg)
-
+    logger.info("Done training")
 
 if __name__ == '__main__':
     main()
